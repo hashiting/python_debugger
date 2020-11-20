@@ -1,5 +1,10 @@
 import sys
 import inspect
+import copy
+
+def sth(a):
+    b = a
+    return b
 
 def remove_html_markup(s):
     tag = False
@@ -17,6 +22,7 @@ def remove_html_markup(s):
             quote = not quote
         elif not tag:
             out = out + c
+            temp = sth(c)
 
     return out
 
@@ -64,6 +70,17 @@ class Tracer(Tracer):
                 source = inspect.getsource(module)
             current_line = source.split('\n')[frame.f_lineno - 1]
             self.log(frame.f_lineno, current_line)
+
+class FF():
+    def __init__(self,frame):
+        #self.f_back = copy.deepcopy(frame.f_back)
+        self.f_builtins = copy.deepcopy(frame.f_builtins)
+        self.f_code = copy.deepcopy(frame.f_code)
+        # self.f_globals = copy.deepcopy(frame.f_globals)
+        self.f_lasti = copy.deepcopy(frame.f_lasti)
+        self.f_lineno = copy.deepcopy(frame.f_lineno)
+        self.f_locals = copy.deepcopy(frame.f_locals)
+        #self.f_trace = copy.deepcopy(frame.f_trace)
 
 class Variable_Tracer(Tracer):
     def __init__(self, file=sys.stdout):
@@ -147,17 +164,27 @@ class Debugger(Variable_Tracer):
         self.frame = None
         self.event = None
         self.arg = None
-
+        self.index = -1
+        self.back_index = -1
+        self.frame_l = []
+        self.event_l = []
+        self.arg_l = []
         super().__init__(file)
     def traceit(self, frame, event, arg):
         """Tracing function; called at every line"""
-        self.frame = frame
-        self.event = event
-        self.arg = arg
-
+        print(type(frame),type(event),type(arg))
+        # print(repr(arg))
+        self.index += 1
+        self.back_index = self.index
+        self.frame_l.append(FF(frame))
+        self.event_l.append(copy.deepcopy(event))
+        self.arg_l.append(copy.deepcopy(arg))
+        # self.frame = frame
+        # self.event = event
+        # self.arg = arg
+        self.get_front_state()
         if self.stop_here():
             self.interaction_loop()
-
         return self.traceit
     def stop_here(self):
         """Return true if we should stop"""
@@ -173,7 +200,14 @@ class Debugger(Variable_Tracer):
     def step_command(self, arg=""):
         """Execute up to the next line"""
         self.stepping = True
-        self.interact = False
+        if self.is_back():
+            self.interact = True
+            self.back_index += 1
+            self.get_back_state()
+            self.print_debugger_status(self.frame, self.event, self.arg)
+        else:
+            self.interact = False
+
     def continue_command(self, arg=""):
         """Resume execution"""
         self.stepping = False
@@ -186,7 +220,6 @@ class Debugger(Variable_Tracer):
         else:
             cmd = command.strip()
             arg = ""
-
         method = self.command_method(cmd)
         if method:
             method(arg)
@@ -283,11 +316,32 @@ class Debugger(Variable_Tracer):
                 spacer = '#'
             self.log(f'{line_number:4}{spacer} {line}', end='')
             line_number += 1
+    
     def quit_command(self, arg=""):
         """Finish execution"""
         self.breakpoints = []
         self.stepping = False
         self.interact = False
+    def is_back(self):
+        return self.back_index < self.index
+    def get_back_state(self):
+        self.frame = self.frame_l[self.back_index]
+        self.event = self.event_l[self.back_index]
+        self.arg = self.arg_l[self.back_index]
+    def get_front_state(self):
+        self.frame = self.frame_l[self.index]
+        self.event = self.event_l[self.index]
+        self.arg = self.arg_l[self.index]
+
+class Debugger(Debugger):
+    def backstep_command(self,arg=""):
+        self.interact = True
+        self.back_index -= 1
+        self.get_back_state()
+        print("current index",self.index)
+        print("back index",self.back_index)
+
+        self.print_debugger_status(self.frame, self.event, self.arg)
     
     
     
